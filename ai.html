@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DUNGEON PONG: The Dragon's Challenge</title>
+    <link href="https://fonts.googleapis.com/css2?family=MedievalSharp&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: radial-gradient(circle, #2a2a2a 0%, #0d0d0d 100%);
+            font-family: 'MedievalSharp', cursive;
+            color: #d4af37;
+            overflow-x: hidden;
+        }
+
+        /* --- RESPONSIVE LAYOUT LOGIC --- */
+        
+        /* The main container for the game */
+        #game-wrapper {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 2rem;
+            transition: all 0.3s ease-in-out;
+        }
+
+        /* Desktop: Adjust for side menu */
+        @media (min-width: 992px) {
+            #game-wrapper {
+                padding-left: 17rem; /* Matches standard Bootstrap side-nav width */
+            }
+            #sideNav {
+                width: 17rem;
+                height: 100vh;
+            }
+        }
+
+        /* Mobile: Adjust for top menu height */
+        @media (max-width: 991.98px) {
+            #game-wrapper {
+                padding-top: 5rem; 
+            }
+        }
+
+        /* --- GAME STYLING --- */
+        
+        h1 {
+            margin-bottom: 5px;
+            letter-spacing: 2px;
+            font-size: clamp(2rem, 5vw, 3.5rem); /* Responsive font size */
+            text-transform: uppercase;
+            text-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
+            text-align: center;
+        }
+
+        p {
+            color: #aaa;
+            font-size: 1rem;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        /* Responsive Canvas: Scales width but keeps aspect ratio */
+        canvas {
+            background-color: #000;
+            border: 10px solid;
+            border-image: linear-gradient(to bottom right, #555, #222, #555) 1;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.8), inset 0 0 10px rgba(0,0,0,0.5);
+            cursor: none;
+            max-width: 100%; /* Ensures it doesn't overflow the screen */
+            height: auto;    /* Maintains 2:1 aspect ratio */
+        }
+
+        /* Customizing the Nav appearance to match D&D theme */
+        #sideNav {
+            background-color: #cc6640 !important; /* Your specific orange */
+            border-right: 2px solid rgba(0,0,0,0.2);
+        }
+        .nav-link {
+            color: #f0dac5 !important;
+        }
+        .nav-link:hover {
+            color: #fff !important;
+            text-decoration: underline;
+        }
+        .img-profile {
+            border: 0.5rem solid rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body id="page-top">
+
+    <nav class="navbar navbar-expand-lg navbar-dark fixed-top" id="sideNav">
+        <a class="navbar-brand js-scroll-trigger" href="#page-top">
+            <span class="d-block d-lg-none">D&D PONG</span>
+            <span class="d-none d-lg-block">
+                <img class="img-fluid img-profile rounded-circle mx-auto mb-2" src="assets/img/TylerDaynes.jpg" alt="Profile" onerror="this.src='https://via.placeholder.com/150/000000/FFFFFF/?text=Hero'"/>
+            </span>
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarResponsive">
+            <ul class="navbar-nav">
+                <li class="nav-item"><a class="nav-link" href="index.html">Resume</a></li>
+                <li class="nav-item"><a class="nav-link active" href="scratch.html">More About me</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <div id="game-wrapper">
+        <h1>DUNGEON PONG</h1>
+        <p>First to 5 wins. Move your mouse within the arena to guide your champion.</p>
+        
+        <canvas id="pongCanvas" width="800" height="400"></canvas>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const canvas = document.getElementById("pongCanvas");
+        const ctx = canvas.getContext("2d");
+
+        // --- THEME & GRAPHICS ---
+        const gold = "#d4af37"; 
+        const playerColor = "#4169e1"; 
+        const aiColor = "#b22222"; 
+        const dieColor = "#00ffff"; 
+
+        const WINNING_SCORE = 5;
+        let showingWinScreen = false;
+
+        const paddleWidth = 12;
+        const paddleHeight = 100;
+
+        const user = { x: 10, y: 150, width: paddleWidth, height: paddleHeight, color: playerColor, score: 0 };
+        const ai = { x: 800 - 22, y: 150, width: paddleWidth, height: paddleHeight, color: aiColor, score: 0 };
+        const ball = { x: 400, y: 200, radius: 12, speed: 7, velocityX: 5, velocityY: 5 };
+
+        // --- INPUT HANDLING (Now accounts for responsive scaling) ---
+        canvas.addEventListener("mousemove", (evt) => {
+            let rect = canvas.getBoundingClientRect();
+            // We calculate scale because the CSS might have shrunk the visual canvas
+            let scaleY = canvas.height / rect.height; 
+            user.y = (evt.clientY - rect.top) * scaleY - user.height / 2;
+        });
+
+        canvas.addEventListener("mousedown", () => {
+            if (showingWinScreen) {
+                user.score = 0; ai.score = 0;
+                showingWinScreen = false;
+                resetBall();
+            }
+        });
+
+        // --- DRAWING ---
+        function drawAdventurer(x, y, w, h) {
+            ctx.fillStyle = playerColor;
+            ctx.beginPath();
+            ctx.moveTo(x, y); ctx.lineTo(x + w, y);
+            ctx.lineTo(x + w, y + h * 0.8); ctx.lineTo(x + w / 2, y + h);
+            ctx.lineTo(x, y + h * 0.8); ctx.closePath(); ctx.fill();
+        }
+
+        function drawDragon(x, y, w, h) {
+            ctx.fillStyle = aiColor;
+            ctx.beginPath();
+            ctx.moveTo(x, y + h/2); ctx.lineTo(x + w * 0.8, y);
+            ctx.lineTo(x + w, y + h/4); ctx.lineTo(x + w * 0.9, y + h/2);
+            ctx.lineTo(x + w, y + h * 0.75); ctx.lineTo(x + w * 0.8, y + h);
+            ctx.closePath(); ctx.fill();
+        }
+
+        function drawD20(x, y, r) {
+            ctx.fillStyle = dieColor;
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                ctx.lineTo(x + r * Math.cos(i * Math.PI / 3), y + r * Math.sin(i * Math.PI / 3));
+            }
+            ctx.closePath(); ctx.fill();
+        }
+
+        function drawNet() {
+            ctx.setLineDash([5, 10]);
+            ctx.strokeStyle = "rgba(212, 175, 55, 0.3)";
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(canvas.width / 2, 0); ctx.lineTo(canvas.width / 2, canvas.height); ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        function resetBall() {
+            ball.x = canvas.width / 2; ball.y = canvas.height / 2;
+            ball.velocityX = -Math.sign(ball.velocityX) * 5; ball.speed = 7;
+        }
+
+        function collision(b, p) {
+            return b.x + b.radius > p.x && b.y + b.radius > p.y && b.x - b.radius < p.x + p.width && b.y - b.radius < p.y + p.height;
+        }
+
+        function update() {
+            if (showingWinScreen) return;
+
+            if (user.y < 0) user.y = 0;
+            if (user.y + user.height > canvas.height) user.y = canvas.height - user.height;
+
+            ball.x += ball.velocityX;
+            ball.y += ball.velocityY;
+
+            ai.y += (ball.y - (ai.y + ai.height / 2)) * 0.09;
+
+            if (ball.y + ball.radius > canvas.height || ball.y - ball.radius < 0) ball.velocityY = -ball.velocityY;
+
+            let player = (ball.x < canvas.width / 2) ? user : ai;
+            if (collision(ball, player)) {
+                let collidePoint = (ball.y - (player.y + player.height / 2)) / (player.height / 2);
+                let angleRad = collidePoint * (Math.PI / 4);
+                let direction = (ball.x < canvas.width / 2) ? 1 : -1;
+                ball.velocityX = direction * ball.speed * Math.cos(angleRad);
+                ball.velocityY = ball.speed * Math.sin(angleRad);
+                ball.speed += 0.5;
+            }
+
+            if (ball.x - ball.radius < 0) {
+                ai.score++;
+                if (ai.score >= WINNING_SCORE) showingWinScreen = true; else resetBall();
+            } else if (ball.x + ball.radius > canvas.width) {
+                user.score++;
+                if (user.score >= WINNING_SCORE) showingWinScreen = true; else resetBall();
+            }
+        }
+
+        function render() {
+            ctx.fillStyle = "#1a1a1a";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (showingWinScreen) {
+                ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.textAlign = "center";
+                ctx.fillStyle = (user.score >= WINNING_SCORE) ? gold : aiColor;
+                ctx.font = "40px MedievalSharp";
+                ctx.fillText((user.score >= WINNING_SCORE) ? "VICTORY!" : "DEFEAT...", 400, 180);
+                ctx.font = "20px MedievalSharp";
+                ctx.fillStyle = "#aaa";
+                ctx.fillText("Click to Quest Again", 400, 240);
+                return;
+            }
+
+            drawNet();
+            ctx.fillStyle = gold;
+            ctx.font = "45px MedievalSharp";
+            ctx.fillText(user.score, 200, 70);
+            ctx.fillText(ai.score, 600, 70);
+            drawAdventurer(user.x, user.y, user.width, user.height);
+            drawDragon(ai.x, ai.y, ai.width, ai.height);
+            drawD20(ball.x, ball.y, ball.radius);
+        }
+
+        function gameLoop() { update(); render(); requestAnimationFrame(gameLoop); }
+        gameLoop();
+    </script>
+</body>
+</html>
